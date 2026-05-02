@@ -1,9 +1,15 @@
-import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "../db/index.ts";
 import { cosine, getItemEmbedding, getProfileEmbedding } from "./embed.ts";
 
 const LIKE_HALF_LIFE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const RECENT_LIKE_LIMIT = 50;
+const FEED_ITEM_LIMIT = 100;
+
+// Weight of one feed item relative to one explicit like (1.0).
+// 10 feed items ≈ 1 like, so subscribed content shapes scoring softly
+// but explicit engagement dominates once it exists.
+const FEED_ITEM_WEIGHT = 0.1;
 
 export interface ScoreInput {
   itemId: number;
@@ -17,29 +23,29 @@ export interface ScoreResult {
 
 export async function scoreItem(input: ScoreInput): Promise<ScoreResult> {
   const profile = await getProfileEmbedding();
-  const likedCentroid = await computeLikedCentroid();
+  const interestCentroid = await computeInterestCentroid();
 
-  const profileSim = profile ? cosine(input.itemEmbedding, profile) : 0;
-  const likedSim = likedCentroid ? cosine(input.itemEmbedding, likedCentroid) : 0;
+  const profileSim   = profile         ? cosine(input.itemEmbedding, profile)         : 0;
+  const interestSim  = interestCentroid ? cosine(input.itemEmbedding, interestCentroid) : 0;
 
-  // Weighted blend. If profile is missing, lean entirely on likes; if both missing, neutral 0.5.
   let relevance: number;
   let rationale: string;
-  if (profile && likedCentroid) {
-    relevance = 0.6 * profileSim + 0.4 * likedSim;
-    rationale = `profile_sim=${profileSim.toFixed(3)} liked_sim=${likedSim.toFixed(3)}`;
+
+  if (profile && interestCentroid) {
+    relevance = 0.6 * profileSim + 0.4 * interestSim;
+    rationale = `profile_sim=${profileSim.toFixed(3)} interest_sim=${interestSim.toFixed(3)}`;
   } else if (profile) {
     relevance = profileSim;
-    rationale = `profile_sim=${profileSim.toFixed(3)} (no likes yet)`;
-  } else if (likedCentroid) {
-    relevance = likedSim;
-    rationale = `liked_sim=${likedSim.toFixed(3)} (no profile prompt)`;
+    rationale = `profile_sim=${profileSim.toFixed(3)} (no feed signals yet)`;
+  } else if (interestCentroid) {
+    relevance = interestSim;
+    rationale = `interest_sim=${interestSim.toFixed(3)} (no profile prompt)`;
   } else {
     relevance = 0.5;
-    rationale = "no profile or likes — neutral";
+    rationale = "no signals yet — neutral";
   }
 
-  // Map cosine [-1,1] roughly to [0,1] for display; centered around 0.5 + sim/2.
+  // Map cosine [-1,1] to [0,1]: 0.5 + sim/2
   relevance = clamp01(0.5 + relevance / 2);
   return { relevance, rationale };
 }
@@ -56,37 +62,62 @@ export async function scoreAndStore(itemId: number, itemEmbedding: number[]): Pr
   return r;
 }
 
-// Exported so the /feed/related route can reuse it.
-export async function computeLikedCentroid(): Promise<number[] | null> {
-  // Pull recent likes AND long dwells (>5 s), decayed by recency.
-  const likes = await db
+/**
+ * Blended interest centroid combining:
+ *   1. Explicit signals  — like / share (weight 1.0) and long dwell ≥5 s (weight proportional)
+ *   2. Feed baseline     — every subscribed item at low weight (0.1),
+ *                          so the user's chosen sources shape scoring from day one
+ *
+ * Explicit engagement still dominates: one like outweighs ten feed items.
+ */
+export async function computeInterestCentroid(): Promise<number[] | null> {
+  const now = Date.now();
+  let acc: number[] | null = null;
+  let weightSum = 0;
+
+  // ── 1. Explicit engagement signals ────────────────────────────────────
+  const signals = await db
     .select({ itemId: schema.signals.itemId, ts: schema.signals.ts, value: schema.signals.value, kind: schema.signals.kind })
     .from(schema.signals)
     .where(sql`kind IN ('like','share') OR (kind = 'dwell_ms' AND value >= 5000)`)
     .orderBy(desc(schema.signals.ts))
     .limit(RECENT_LIKE_LIMIT);
 
-  if (likes.length === 0) return null;
-
-  const now = Date.now();
-  let acc: number[] | null = null;
-  let weightSum = 0;
-
-  for (const like of likes) {
-    const vec = await getItemEmbedding(like.itemId);
+  for (const sig of signals) {
+    const vec = await getItemEmbedding(sig.itemId);
     if (!vec) continue;
-    const ageMs = now - like.ts.getTime();
-    // dwell signals carry weight proportional to seconds spent (capped at 0.8 of a full like)
-    const baseWeight = like.kind === "dwell_ms" ? Math.min(like.value / 30000, 0.8) : 1;
-    const w = baseWeight * Math.pow(0.5, ageMs / LIKE_HALF_LIFE_MS);
+    const ageMs = now - sig.ts.getTime();
+    const base = sig.kind === "dwell_ms" ? Math.min(sig.value / 30000, 0.8) : 1.0;
+    const w = base * Math.pow(0.5, ageMs / LIKE_HALF_LIFE_MS);
     if (!acc) acc = new Array(vec.length).fill(0);
     for (let i = 0; i < vec.length; i++) acc[i]! += vec[i]! * w;
     weightSum += w;
   }
+
+  // ── 2. Feed baseline — all subscribed items at low weight ─────────────
+  const feedItems = await db
+    .select({ id: schema.items.id, createdAt: schema.items.createdAt })
+    .from(schema.items)
+    .orderBy(desc(schema.items.createdAt))
+    .limit(FEED_ITEM_LIMIT);
+
+  for (const item of feedItems) {
+    const vec = await getItemEmbedding(item.id);
+    if (!vec) continue;
+    const ageMs = now - item.createdAt.getTime();
+    const w = FEED_ITEM_WEIGHT * Math.pow(0.5, ageMs / LIKE_HALF_LIFE_MS);
+    if (!acc) acc = new Array(vec.length).fill(0);
+    for (let i = 0; i < vec.length; i++) acc[i]! += vec[i]! * w;
+    weightSum += w;
+  }
+
   if (!acc || weightSum === 0) return null;
   for (let i = 0; i < acc.length; i++) acc[i] = acc[i]! / weightSum;
   return acc;
 }
+
+// Keep old name as alias so the feed/related route still compiles.
+export const computeLikedCentroid = computeInterestCentroid;
 
 function clamp01(x: number): number {
   return x < 0 ? 0 : x > 1 ? 1 : x;
