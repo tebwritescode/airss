@@ -7,6 +7,9 @@
   let url = $state("");
   let busy = $state(false);
   let err = $state<string | null>(null);
+  let importing = $state(false);
+  let importMsg = $state<string | null>(null);
+  let fileInput: HTMLInputElement;
 
   async function load() {
     sources = (await api.listSources()).sources;
@@ -31,6 +34,36 @@
     await load();
   }
 
+  async function importOpml(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    importing = true; importMsg = null;
+    try {
+      const xml = await file.text();
+      const r = await fetch("/api/sources/opml/import", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/xml" },
+        body: xml,
+      });
+      const data = await r.json();
+      if (r.ok) importMsg = `Added ${data.added} of ${data.total} feeds.`;
+      else importMsg = `Import failed: ${data.error ?? r.statusText}`;
+      await load();
+    } catch (e) {
+      importMsg = `Import failed: ${(e as Error).message}`;
+    } finally {
+      importing = false;
+      input.value = "";
+    }
+  }
+
+  function exportOpml() {
+    // Open in new tab so the browser respects the Content-Disposition download.
+    window.location.href = "/api/sources/opml/export";
+  }
+
   onMount(load);
 </script>
 
@@ -50,6 +83,27 @@
     <button class="btn" onclick={add} disabled={busy}>Add</button>
   </div>
   {#if err}<p style="color:var(--bad)">{err}</p>{/if}
+</section>
+
+<section class="section">
+  <h2>Import / Export</h2>
+  <p class="muted" style="font-size:0.85rem; margin-top:0;">
+    OPML is the standard subscription format used by most RSS readers.
+  </p>
+  <div class="row" style="gap:0.5rem;">
+    <button class="btn-ghost" onclick={() => fileInput.click()} disabled={importing}>
+      {importing ? "Importing…" : "↓ Import OPML"}
+    </button>
+    <button class="btn-ghost" onclick={exportOpml}>↑ Export OPML</button>
+    <input
+      bind:this={fileInput}
+      type="file"
+      accept=".opml,.xml,application/xml,text/xml"
+      onchange={importOpml}
+      style="display:none;"
+    />
+  </div>
+  {#if importMsg}<p class="muted" style="font-size:0.85rem; margin:0.4rem 0 0;">{importMsg}</p>{/if}
 </section>
 
 <section class="section">

@@ -111,6 +111,9 @@ const STATEMENTS: string[] = [
 // errors via try/catch since "ADD COLUMN IF NOT EXISTS" doesn't exist.
 const ALTERS: { sql: string; description: string }[] = [
   { sql: `ALTER TABLE provider_keys ADD COLUMN base_url TEXT`, description: "provider_keys.base_url" },
+  { sql: `ALTER TABLE sources ADD COLUMN consecutive_failures INTEGER NOT NULL DEFAULT 0`, description: "sources.consecutive_failures" },
+  { sql: `ALTER TABLE sources ADD COLUMN next_retry_at INTEGER`, description: "sources.next_retry_at" },
+  { sql: `ALTER TABLE sources ADD COLUMN last_error TEXT`, description: "sources.last_error" },
 ];
 
 for (const stmt of STATEMENTS) raw.exec(stmt);

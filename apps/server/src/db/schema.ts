@@ -12,6 +12,9 @@ export const sources = sqliteTable(
     lastModified: text("last_modified"),
     lastFetchedAt: integer("last_fetched_at", { mode: "timestamp_ms" }),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    nextRetryAt: integer("next_retry_at", { mode: "timestamp_ms" }),
+    lastError: text("last_error"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   },
   (t) => ({
