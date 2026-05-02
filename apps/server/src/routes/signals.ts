@@ -7,7 +7,7 @@ export const signalRoutes = new Hono();
 signalRoutes.post("/", async (c) => {
   const Body = z.object({
     itemId: z.number().int(),
-    kind: z.enum(["dwell_ms", "like", "dislike", "save", "hide", "open"]),
+    kind: z.enum(["dwell_ms", "like", "dislike", "save", "hide", "open", "share"]),
     value: z.number().optional(),
   });
   const body = Body.parse(await c.req.json());
@@ -26,7 +26,7 @@ signalRoutes.post("/batch", async (c) => {
       .array(
         z.object({
           itemId: z.number().int(),
-          kind: z.enum(["dwell_ms", "like", "dislike", "save", "hide", "open"]),
+          kind: z.enum(["dwell_ms", "like", "dislike", "save", "hide", "open", "share"]),
           value: z.number().optional(),
         })
       )

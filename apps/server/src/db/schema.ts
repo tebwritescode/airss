@@ -62,7 +62,7 @@ export const signals = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     itemId: integer("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
-    kind: text("kind", { enum: ["dwell_ms", "like", "dislike", "save", "hide", "open"] }).notNull(),
+    kind: text("kind", { enum: ["dwell_ms", "like", "dislike", "save", "hide", "open", "share"] }).notNull(),
     value: real("value").notNull().default(1),
     ts: integer("ts", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   },

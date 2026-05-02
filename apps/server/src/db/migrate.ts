@@ -49,7 +49,7 @@ const STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS signals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL CHECK(kind IN ('dwell_ms','like','dislike','save','hide','open')),
+    kind TEXT NOT NULL CHECK(kind IN ('dwell_ms','like','dislike','save','hide','open','share')),
     value REAL NOT NULL DEFAULT 1,
     ts INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
   )`,
@@ -113,6 +113,32 @@ const ALTERS: { sql: string; description: string }[] = [
 ];
 
 for (const stmt of STATEMENTS) raw.exec(stmt);
+
+// Upgrade signals table if 'share' kind is not in its CHECK constraint.
+const signalsDef = (raw.query(`SELECT sql FROM sqlite_master WHERE type='table' AND name='signals'`).get() as { sql: string } | undefined)?.sql ?? "";
+if (!signalsDef.includes("'share'")) {
+  try {
+    raw.exec(`BEGIN`);
+    raw.exec(`CREATE TABLE signals_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('dwell_ms','like','dislike','save','hide','open','share')),
+      value REAL NOT NULL DEFAULT 1,
+      ts INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    )`);
+    raw.exec(`INSERT OR IGNORE INTO signals_new(id,item_id,kind,value,ts) SELECT id,item_id,kind,value,ts FROM signals`);
+    raw.exec(`DROP TABLE signals`);
+    raw.exec(`ALTER TABLE signals_new RENAME TO signals`);
+    raw.exec(`CREATE INDEX IF NOT EXISTS signals_item_kind_idx ON signals(item_id, kind)`);
+    raw.exec(`CREATE INDEX IF NOT EXISTS signals_ts_idx ON signals(ts)`);
+    raw.exec(`COMMIT`);
+    console.log("[migrate] signals: added 'share' kind");
+  } catch (err) {
+    raw.exec(`ROLLBACK`);
+    console.error("[migrate] signals upgrade failed:", err);
+  }
+}
+
 for (const a of ALTERS) {
   try {
     raw.exec(a.sql);

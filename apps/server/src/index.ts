@@ -11,6 +11,7 @@ import { signalRoutes } from "./routes/signals.ts";
 import { profileRoutes } from "./routes/profile.ts";
 import { providerRoutes } from "./routes/providers.ts";
 import { refreshRoutes } from "./routes/refresh.ts";
+import { itemRoutes } from "./routes/items.ts";
 import { startScheduler } from "./jobs/scheduler.ts";
 
 const app = new Hono();
@@ -34,6 +35,7 @@ app.route("/api/signals", signalRoutes);
 app.route("/api/profile", profileRoutes);
 app.route("/api/providers", providerRoutes);
 app.route("/api/refresh", refreshRoutes);
+app.route("/api/items", itemRoutes);
 
 // Serve the built PWA at the root; fall back to index.html for SPA routes.
 app.use("/*", serveStatic({ root: env.PWA_DIST }));

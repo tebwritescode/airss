@@ -56,12 +56,13 @@ export async function scoreAndStore(itemId: number, itemEmbedding: number[]): Pr
   return r;
 }
 
-async function computeLikedCentroid(): Promise<number[] | null> {
-  // Pull recent likes (decayed by recency), average their item embeddings.
+// Exported so the /feed/related route can reuse it.
+export async function computeLikedCentroid(): Promise<number[] | null> {
+  // Pull recent likes AND long dwells (>5 s), decayed by recency.
   const likes = await db
-    .select({ itemId: schema.signals.itemId, ts: schema.signals.ts, value: schema.signals.value })
+    .select({ itemId: schema.signals.itemId, ts: schema.signals.ts, value: schema.signals.value, kind: schema.signals.kind })
     .from(schema.signals)
-    .where(eq(schema.signals.kind, "like"))
+    .where(sql`kind IN ('like','share') OR (kind = 'dwell_ms' AND value >= 5000)`)
     .orderBy(desc(schema.signals.ts))
     .limit(RECENT_LIKE_LIMIT);
 
@@ -75,7 +76,9 @@ async function computeLikedCentroid(): Promise<number[] | null> {
     const vec = await getItemEmbedding(like.itemId);
     if (!vec) continue;
     const ageMs = now - like.ts.getTime();
-    const w = like.value * Math.pow(0.5, ageMs / LIKE_HALF_LIFE_MS);
+    // dwell signals carry weight proportional to seconds spent (capped at 0.8 of a full like)
+    const baseWeight = like.kind === "dwell_ms" ? Math.min(like.value / 30000, 0.8) : 1;
+    const w = baseWeight * Math.pow(0.5, ageMs / LIKE_HALF_LIFE_MS);
     if (!acc) acc = new Array(vec.length).fill(0);
     for (let i = 0; i < vec.length; i++) acc[i]! += vec[i]! * w;
     weightSum += w;

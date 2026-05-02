@@ -7,29 +7,41 @@
 
   let { children } = $props();
   let booted = $state(false);
+  let path = $derived($page.url.pathname);
 
   onMount(async () => {
     try {
       const s = await api.authStatus();
-      const path = $page.url.pathname;
       if (s.firstRun && path !== "/setup") goto("/setup");
     } catch {
-      // ignore — page itself can show login state via 401s
+      // ignore — pages handle 401s
     } finally {
       booted = true;
     }
   });
-</script>
 
-<nav class="topnav">
-  <h1>swift-newt</h1>
-  <a href="/" class:active={$page.url.pathname === "/"}>Feed</a>
-  <a href="/sources" class:active={$page.url.pathname.startsWith("/sources")}>Sources</a>
-  <a href="/settings" class:active={$page.url.pathname.startsWith("/settings")}>Settings</a>
-</nav>
+  const hideTabBar = ["/setup", "/login"].includes(path);
+</script>
 
 <main class="shell">
   {#if booted}
     {@render children()}
   {/if}
 </main>
+
+{#if booted && !hideTabBar}
+  <nav class="tabbar">
+    <a class="tab" class:active={path === "/"} href="/">
+      <span class="icon">⌂</span>
+      <span>Feed</span>
+    </a>
+    <a class="tab" class:active={path.startsWith("/sources")} href="/sources">
+      <span class="icon">＋</span>
+      <span>Sources</span>
+    </a>
+    <a class="tab" class:active={path.startsWith("/settings")} href="/settings">
+      <span class="icon">⚙</span>
+      <span>Settings</span>
+    </a>
+  </nav>
+{/if}

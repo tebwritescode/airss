@@ -1,6 +1,8 @@
 import { Hono } from "hono";
-import { desc, eq, sql, and, lt, gte, inArray } from "drizzle-orm";
+import { desc, eq, sql, and, lt, gte, inArray, notInArray } from "drizzle-orm";
 import { db, schema } from "../db/index.ts";
+import { getItemEmbedding, cosine } from "../enricher/embed.ts";
+import { computeLikedCentroid } from "../enricher/score.ts";
 
 export const feedRoutes = new Hono();
 
@@ -57,4 +59,58 @@ feedRoutes.get("/", async (c) => {
   const nextCursor = last && last.relevance != null ? `${last.relevance}:${last.id}` : null;
 
   return c.json({ items: visible, nextCursor });
+});
+
+// Embedding-based recommendations: items similar to what the user has liked/lingered on.
+feedRoutes.get("/related", async (c) => {
+  const excludeIds = (c.req.query("excludeIds") ?? "")
+    .split(",")
+    .map(Number)
+    .filter(Boolean);
+  const limit = Math.min(Number(c.req.query("limit") ?? "6"), 20);
+
+  const centroid = await computeLikedCentroid();
+  if (!centroid) return c.json({ items: [] });
+
+  // Hidden items should not appear in recommendations.
+  const hidden = await db
+    .selectDistinct({ itemId: schema.signals.itemId })
+    .from(schema.signals)
+    .where(inArray(schema.signals.kind, ["hide", "dislike"]));
+  const hiddenIds = new Set([...hidden.map((h) => h.itemId), ...excludeIds]);
+
+  // Candidate pool: scored items not already excluded.
+  const candidates = await db
+    .select({
+      id: schema.items.id,
+      title: schema.items.title,
+      url: schema.items.url,
+      author: schema.items.author,
+      publishedAt: schema.items.publishedAt,
+      imageUrl: schema.items.imageUrl,
+      contentText: schema.items.contentText,
+      sourceId: schema.items.sourceId,
+      sourceTitle: schema.sources.title,
+      sourceKind: schema.sources.kind,
+      relevance: schema.scores.relevance,
+      rationale: schema.scores.rationale,
+    })
+    .from(schema.items)
+    .leftJoin(schema.scores, eq(schema.scores.itemId, schema.items.id))
+    .leftJoin(schema.sources, eq(schema.sources.id, schema.items.sourceId))
+    .where(gte(schema.scores.relevance, 0))
+    .orderBy(desc(schema.items.id))
+    .limit(200);
+
+  // Rank by cosine similarity to interest centroid.
+  const ranked: { item: typeof candidates[0]; sim: number }[] = [];
+  for (const item of candidates) {
+    if (hiddenIds.has(item.id)) continue;
+    const vec = await getItemEmbedding(item.id);
+    if (!vec) continue;
+    ranked.push({ item, sim: cosine(centroid, vec) });
+  }
+  ranked.sort((a, b) => b.sim - a.sim);
+
+  return c.json({ items: ranked.slice(0, limit).map((r) => r.item) });
 });

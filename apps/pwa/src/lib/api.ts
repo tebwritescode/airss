@@ -1,3 +1,5 @@
+export type FullItem = FeedItem & { contentHtml: string | null };
+
 export type FeedItem = {
   id: number;
   title: string;
@@ -11,6 +13,7 @@ export type FeedItem = {
   sourceKind: string | null;
   relevance: number | null;
   rationale: string | null;
+  _liked?: boolean;
 };
 
 export type Source = {
@@ -69,6 +72,12 @@ export const api = {
   deleteProviderKey: (provider: string) => call(`/api/providers/keys/${provider}`, { method: "DELETE" }),
   saveTaskConfig: (task: string, provider: string, model: string) =>
     call(`/api/providers/config/${task}`, { method: "PUT", body: JSON.stringify({ provider, model }) }),
+
+  getItem: (id: number) => call<{ item: FullItem }>(`/api/items/${id}`),
+  getRelated: (excludeIds: number[], limit = 6) =>
+    call<{ items: FeedItem[] }>(
+      `/api/feed/related?excludeIds=${excludeIds.join(",")}&limit=${limit}`
+    ),
 
   signal: (itemId: number, kind: string, value = 1) =>
     call("/api/signals", { method: "POST", body: JSON.stringify({ itemId, kind, value }) }),
