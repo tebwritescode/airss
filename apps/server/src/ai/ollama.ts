@@ -1,8 +1,9 @@
 import type { Provider, ChatRequest, ChatResponse, EmbedRequest, EmbedResponse } from "./provider.ts";
 
-export function makeOllama(baseURL = "http://localhost:11434"): Provider {
+export function makeOllama(baseURL?: string | null): Provider {
+  const url = baseURL || "http://localhost:11434";
   async function post<T>(path: string, body: unknown): Promise<T> {
-    const res = await fetch(`${baseURL}${path}`, {
+    const res = await fetch(`${url}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),

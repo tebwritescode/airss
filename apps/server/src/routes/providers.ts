@@ -9,27 +9,59 @@ export const providerRoutes = new Hono();
 
 providerRoutes.get("/", async (c) => {
   const keys = await db
-    .select({ provider: schema.providerKeys.provider, createdAt: schema.providerKeys.createdAt })
+    .select({
+      provider: schema.providerKeys.provider,
+      baseUrl: schema.providerKeys.baseUrl,
+      hasKey: schema.providerKeys.ciphertext, // returned as "" or non-empty; client only checks truthiness
+      createdAt: schema.providerKeys.createdAt,
+    })
     .from(schema.providerKeys);
+  // Don't ship raw ciphertexts; only signal whether a key is set.
+  const safeKeys = keys.map((k) => ({
+    provider: k.provider,
+    baseUrl: k.baseUrl,
+    hasKey: !!k.hasKey,
+    createdAt: k.createdAt,
+  }));
   const config = await db.select().from(schema.providerConfig);
-  return c.json({ keys, config });
+  return c.json({ keys: safeKeys, config });
 });
 
 providerRoutes.post("/keys", async (c) => {
   const Body = z.object({
     provider: z.enum(["anthropic", "openai", "openrouter", "ollama"]),
-    key: z.string().min(1),
+    // Empty string allowed for keyless providers (Ollama).
+    key: z.string().default(""),
+    // Optional override of the provider's HTTP base URL. Pass empty string or
+    // omit to use the default. Validated as a URL when provided.
+    baseUrl: z.string().url().nullish().or(z.literal("")),
   });
-  const { provider, key } = Body.parse(await c.req.json());
-  const enc = encryptKey(key);
+  const body = Body.parse(await c.req.json());
+
+  const enc = body.key ? encryptKey(body.key) : { ciphertext: "", nonce: "" };
+  const baseUrl = body.baseUrl ? body.baseUrl : null;
+
   await db
     .insert(schema.providerKeys)
-    .values({ provider, ciphertext: enc.ciphertext, nonce: enc.nonce })
+    .values({
+      provider: body.provider,
+      ciphertext: enc.ciphertext,
+      nonce: enc.nonce,
+      baseUrl,
+    })
     .onConflictDoUpdate({
       target: schema.providerKeys.provider,
-      set: { ciphertext: enc.ciphertext, nonce: enc.nonce, createdAt: new Date() },
+      set: {
+        // Only overwrite ciphertext when a new key is actually provided so the
+        // user can update just the baseUrl without re-pasting their secret.
+        ...(body.key
+          ? { ciphertext: enc.ciphertext, nonce: enc.nonce }
+          : {}),
+        baseUrl,
+        createdAt: new Date(),
+      },
     });
-  invalidateProviderCache(provider);
+  invalidateProviderCache(body.provider);
   return c.json({ ok: true });
 });
 

@@ -21,7 +21,9 @@ docker compose up --build
 #    "Add to Home Screen" to install as a PWA.
 ```
 
-First run: the app prompts for a single-user password, then for an Anthropic API key. Add a few sources (a subreddit URL, a YouTube channel URL, an RSS feed URL), write a one-paragraph interest description in Settings, and the feed populates within one fetch cycle.
+First run: the app prompts for a single-user password, then for an API key. In Settings → Provider keys you can pick **OpenRouter** and paste any OpenRouter key — then in Settings → Per-task model use any catalog model id (e.g. `anthropic/claude-3.5-sonnet`, `openai/gpt-4o-mini`, `meta-llama/llama-3.1-8b-instruct`). Each provider also accepts an optional **base URL** override, so you can point any OpenAI-compatible endpoint at a self-hosted proxy or alternate gateway.
+
+Add a few sources (a subreddit URL, a YouTube channel URL, an RSS feed URL), write a one-paragraph interest description in Settings, and the feed populates within one fetch cycle.
 
 ## Architecture
 

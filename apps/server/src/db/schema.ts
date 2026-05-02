@@ -91,8 +91,13 @@ export const providerKeys = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     provider: text("provider", { enum: ["anthropic", "openai", "openrouter", "ollama"] }).notNull(),
-    ciphertext: text("ciphertext").notNull(),
-    nonce: text("nonce").notNull(),
+    // Empty string when the provider is keyless (e.g. local Ollama).
+    ciphertext: text("ciphertext").notNull().default(""),
+    nonce: text("nonce").notNull().default(""),
+    // Optional override for the provider's HTTP base URL. NULL means "use the
+    // built-in default for this provider". Lets a user point openai-compatible
+    // providers at OpenRouter, a self-hosted proxy, etc.
+    baseUrl: text("base_url"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   },
   (t) => ({

@@ -53,8 +53,8 @@ export function makeOpenAICompatible(opts: {
   };
 }
 
-export const makeOpenAI = (apiKey: string) =>
-  makeOpenAICompatible({ name: "openai", apiKey, baseURL: "https://api.openai.com/v1" });
+export const makeOpenAI = (apiKey: string, baseURL?: string | null) =>
+  makeOpenAICompatible({ name: "openai", apiKey, baseURL: baseURL ?? "https://api.openai.com/v1" });
 
-export const makeOpenRouter = (apiKey: string) =>
-  makeOpenAICompatible({ name: "openrouter", apiKey, baseURL: "https://openrouter.ai/api/v1" });
+export const makeOpenRouter = (apiKey: string, baseURL?: string | null) =>
+  makeOpenAICompatible({ name: "openrouter", apiKey, baseURL: baseURL ?? "https://openrouter.ai/api/v1" });

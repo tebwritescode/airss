@@ -6,10 +6,22 @@
   let savedAt = $state<number | null>(null);
   let savingProfile = $state(false);
 
-  let providers = $state<{ provider: string; createdAt: number }[]>([]);
+  type ProviderName = "anthropic" | "openai" | "openrouter" | "ollama";
+
+  let providers = $state<{ provider: string; baseUrl: string | null; hasKey: boolean; createdAt: number }[]>([]);
   let configs = $state<{ task: string; provider: string; model: string }[]>([]);
-  let newProvider = $state<"anthropic" | "openai" | "openrouter" | "ollama">("anthropic");
+
+  let newProvider = $state<ProviderName>("openrouter");
   let newKey = $state("");
+  let newBaseUrl = $state("");
+
+  // Default base URL hint per provider — shown as the input placeholder.
+  const DEFAULT_BASE_URL: Record<ProviderName, string> = {
+    anthropic: "https://api.anthropic.com",
+    openai: "https://api.openai.com/v1",
+    openrouter: "https://openrouter.ai/api/v1",
+    ollama: "http://localhost:11434",
+  };
 
   let taskRows = $state<Record<string, { provider: string; model: string }>>({
     embed: { provider: "openai", model: "text-embedding-3-small" },
@@ -40,9 +52,12 @@
   }
 
   async function addKey() {
-    if (!newKey.trim()) return;
-    await api.saveProviderKey(newProvider, newKey.trim());
+    // Allow saving baseUrl alone (e.g. updating just an existing entry's URL)
+    // — the server preserves the existing key when `key` is empty.
+    if (!newKey.trim() && !newBaseUrl.trim()) return;
+    await api.saveProviderKey(newProvider, newKey.trim(), newBaseUrl.trim() || null);
     newKey = "";
+    newBaseUrl = "";
     await loadAll();
   }
 
@@ -74,6 +89,12 @@
 
 <section class="section">
   <h2>Provider keys</h2>
+  <p class="muted" style="font-size:0.85rem; margin-top:0">
+    Pick a provider, paste an API key, and optionally override the base URL
+    (useful for OpenRouter, self-hosted proxies, or pointing OpenAI-compatible
+    endpoints at any backend). Keys are encrypted server-side with libsodium and
+    never returned to the browser.
+  </p>
   <div class="row">
     <select bind:value={newProvider} style="flex:0 0 auto; max-width:9rem;">
       <option value="anthropic">Anthropic</option>
@@ -81,14 +102,20 @@
       <option value="openrouter">OpenRouter</option>
       <option value="ollama">Ollama (no key)</option>
     </select>
-    <input bind:value={newKey} placeholder="API key" type="password" />
-    <button class="btn" onclick={addKey}>Save</button>
+    <input bind:value={newKey} placeholder={newProvider === "ollama" ? "(no key required)" : "API key"} type="password" disabled={newProvider === "ollama"} />
   </div>
-  <p class="muted" style="font-size:0.85rem">Keys are encrypted server-side with libsodium and never returned to the browser.</p>
+  <div class="row">
+    <input bind:value={newBaseUrl} placeholder={`Base URL (default: ${DEFAULT_BASE_URL[newProvider]})`} />
+    <button class="btn" onclick={addKey} style="flex:0 0 auto;">Save</button>
+  </div>
+
   {#each providers as k (k.provider)}
     <div class="source-row">
       <span class="kind">{k.provider}</span>
-      <span class="url muted">configured · {new Date(k.createdAt).toLocaleString()}</span>
+      <span class="url muted">
+        {k.hasKey ? "key set" : "no key"}{k.baseUrl ? ` · ${k.baseUrl}` : ` · ${DEFAULT_BASE_URL[k.provider as ProviderName] ?? "default"}`}
+        · {new Date(k.createdAt).toLocaleString()}
+      </span>
       <button onclick={() => removeKey(k.provider)}>Remove</button>
     </div>
   {/each}
@@ -96,6 +123,12 @@
 
 <section class="section">
   <h2>Per-task model</h2>
+  <p class="muted" style="font-size:0.85rem; margin-top:0">
+    Route each AI task to whichever provider+model fits. With OpenRouter set as
+    a provider you can use any model in their catalog as the model id (e.g.
+    <code>anthropic/claude-3.5-sonnet</code>, <code>openai/gpt-4o-mini</code>,
+    or <code>meta-llama/llama-3.1-8b-instruct</code>).
+  </p>
   {#each Object.keys(taskRows) as task}
     <div class="row">
       <span class="muted" style="flex:0 0 7rem;">{task}</span>

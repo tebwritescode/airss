@@ -1,8 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Provider, ChatRequest, ChatResponse, EmbedRequest, EmbedResponse } from "./provider.ts";
 
-export function makeAnthropic(apiKey: string): Provider {
-  const client = new Anthropic({ apiKey });
+export function makeAnthropic(apiKey: string, baseURL?: string | null): Provider {
+  const client = new Anthropic({ apiKey, baseURL: baseURL ?? undefined });
 
   return {
     name: "anthropic",

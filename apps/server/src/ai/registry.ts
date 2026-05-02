@@ -12,20 +12,22 @@ export async function getProvider(name: ProviderName): Promise<Provider> {
   const cached = cache.get(name);
   if (cached) return cached;
 
+  const row = await db.query.providerKeys.findFirst({ where: eq(schema.providerKeys.provider, name) });
+
   if (name === "ollama") {
-    const p = makeOllama();
+    const p = makeOllama(row?.baseUrl ?? null);
     cache.set(name, p);
     return p;
   }
 
-  const row = await db.query.providerKeys.findFirst({ where: eq(schema.providerKeys.provider, name) });
-  if (!row) throw new Error(`No API key configured for provider: ${name}`);
+  if (!row || !row.ciphertext) throw new Error(`No API key configured for provider: ${name}`);
   const key = decryptKey(row.ciphertext, row.nonce);
+  const baseUrl = row.baseUrl ?? null;
 
   const p =
-    name === "anthropic" ? makeAnthropic(key) :
-    name === "openai" ? makeOpenAI(key) :
-    name === "openrouter" ? makeOpenRouter(key) :
+    name === "anthropic" ? makeAnthropic(key, baseUrl) :
+    name === "openai" ? makeOpenAI(key, baseUrl) :
+    name === "openrouter" ? makeOpenRouter(key, baseUrl) :
     (() => { throw new Error(`Unknown provider: ${name}`); })();
 
   cache.set(name, p);

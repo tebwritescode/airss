@@ -58,11 +58,14 @@ export const api = {
 
   getProviders: () =>
     call<{
-      keys: { provider: string; createdAt: number }[];
+      keys: { provider: string; baseUrl: string | null; hasKey: boolean; createdAt: number }[];
       config: { task: string; provider: string; model: string }[];
     }>("/api/providers"),
-  saveProviderKey: (provider: string, key: string) =>
-    call("/api/providers/keys", { method: "POST", body: JSON.stringify({ provider, key }) }),
+  saveProviderKey: (provider: string, key: string, baseUrl?: string | null) =>
+    call("/api/providers/keys", {
+      method: "POST",
+      body: JSON.stringify({ provider, key, baseUrl: baseUrl ?? "" }),
+    }),
   deleteProviderKey: (provider: string) => call(`/api/providers/keys/${provider}`, { method: "DELETE" }),
   saveTaskConfig: (task: string, provider: string, model: string) =>
     call(`/api/providers/config/${task}`, { method: "PUT", body: JSON.stringify({ provider, model }) }),
