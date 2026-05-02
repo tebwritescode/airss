@@ -69,6 +69,8 @@ export const api = {
       body: JSON.stringify({ provider, key, baseUrl: baseUrl ?? "" }),
     }),
   deleteProviderKey: (provider: string) => call(`/api/providers/keys/${provider}`, { method: "DELETE" }),
+  listModels: (provider: string) =>
+    call<{ models: string[]; cached?: boolean; error?: string }>(`/api/providers/models/${provider}`),
   saveTaskConfig: (task: string, provider: string, model: string) =>
     call(`/api/providers/config/${task}`, { method: "PUT", body: JSON.stringify({ provider, model }) }),
 

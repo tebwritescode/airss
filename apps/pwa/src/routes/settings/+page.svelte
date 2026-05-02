@@ -30,6 +30,24 @@
     digest:      { provider: "anthropic",  model: "claude-opus-4-7" },
   });
 
+  // Cache of model lists per provider, populated lazily when a row's provider
+  // is selected. Datalist below renders the suggestions for the input.
+  let modelsByProvider = $state<Record<string, string[]>>({});
+  let loadingModels = $state<Record<string, boolean>>({});
+
+  async function ensureModels(provider: string) {
+    if (modelsByProvider[provider] || loadingModels[provider]) return;
+    loadingModels[provider] = true;
+    try {
+      const r = await api.listModels(provider);
+      modelsByProvider[provider] = r.models ?? [];
+    } catch {
+      modelsByProvider[provider] = [];
+    } finally {
+      loadingModels[provider] = false;
+    }
+  }
+
   async function loadAll() {
     const p = await api.getProfile();
     promptText = p.profile.promptText ?? "";
@@ -40,6 +58,9 @@
     providers = all.keys;
     configs = all.config;
     for (const c of all.config) taskRows[c.task] = { provider: c.provider, model: c.model };
+    // Pre-load model lists for every provider currently in use across tasks.
+    const usedProviders = new Set(Object.values(taskRows).map((r) => r.provider));
+    usedProviders.forEach((p) => ensureModels(p));
   }
 
   async function saveProfile() {
@@ -181,16 +202,36 @@
     The <strong>summarize</strong> task is used for AI profile generation.
   </p>
   {#each Object.keys(taskRows) as task}
+    {@const row = taskRows[task]}
+    {@const listId = `models-${task}`}
     <div class="row">
       <span class="muted" style="flex:0 0 7rem; font-size:0.85rem;">{task}</span>
-      <select bind:value={taskRows[task].provider} style="flex:0 0 auto; max-width:8.5rem;">
+      <select
+        bind:value={row.provider}
+        onchange={() => ensureModels(row.provider)}
+        style="flex:0 0 auto; max-width:8.5rem;"
+      >
         <option value="anthropic">Anthropic</option>
         <option value="openai">OpenAI</option>
         <option value="openrouter">OpenRouter</option>
         <option value="ollama">Ollama</option>
       </select>
-      <input bind:value={taskRows[task].model} placeholder="model id" />
+      <input
+        bind:value={row.model}
+        list={listId}
+        placeholder={loadingModels[row.provider] ? "Loading models…" : "Type to search models"}
+        autocomplete="off"
+      />
+      <datalist id={listId}>
+        {#each (modelsByProvider[row.provider] ?? []) as m}
+          <option value={m}></option>
+        {/each}
+      </datalist>
       <button class="btn-ghost" onclick={() => saveTask(task)}>Save</button>
     </div>
   {/each}
+  <p class="muted" style="font-size:0.75rem; margin-top:0.5rem;">
+    Models are fetched live from the provider's API and cached for an hour.
+    For OpenRouter and OpenAI the list pulls automatically once a key is saved.
+  </p>
 </section>

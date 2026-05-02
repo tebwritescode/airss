@@ -9,7 +9,10 @@ export const feedRoutes = new Hono();
 const PAGE_SIZE = 30;
 
 feedRoutes.get("/", async (c) => {
-  const cursor = c.req.query("cursor"); // "<relevance>:<itemId>"
+  // Cursor format: "<effectiveRelevance>:<publishedAtMs>:<itemId>".
+  // effectiveRelevance = COALESCE(scores.relevance, 0.5) so unscored items
+  // appear in the middle of the ranking ordered by recency.
+  const cursor = c.req.query("cursor");
   const minScore = Number(c.req.query("minScore") ?? "0");
   const sourceId = c.req.query("sourceId") ? Number(c.req.query("sourceId")) : undefined;
 
@@ -19,6 +22,10 @@ feedRoutes.get("/", async (c) => {
     .from(schema.signals)
     .where(inArray(schema.signals.kind, ["hide", "dislike"]));
   const hiddenIds = new Set(hidden.map((h) => h.itemId));
+
+  // SQL expressions used in both ORDER BY and the keyset cursor predicate.
+  const effRelevance = sql<number>`COALESCE(${schema.scores.relevance}, 0.5)`;
+  const effPublished = sql<number>`COALESCE(${schema.items.publishedAt}, ${schema.items.createdAt})`;
 
   let q = db
     .select({
@@ -34,31 +41,42 @@ feedRoutes.get("/", async (c) => {
       sourceKind: schema.sources.kind,
       relevance: schema.scores.relevance,
       rationale: schema.scores.rationale,
+      effRel: effRelevance,
+      effPub: effPublished,
     })
     .from(schema.items)
     .leftJoin(schema.scores, eq(schema.scores.itemId, schema.items.id))
     .leftJoin(schema.sources, eq(schema.sources.id, schema.items.sourceId))
     .$dynamic();
 
-  const filters = [gte(schema.scores.relevance, minScore)];
+  const filters: any[] = [];
+  // minScore filter only triggers if the caller explicitly asks for one > 0.
+  if (minScore > 0) filters.push(gte(effRelevance, minScore));
   if (sourceId) filters.push(eq(schema.items.sourceId, sourceId));
   if (cursor) {
-    const [relStr, idStr] = cursor.split(":");
-    const rel = Number(relStr), id = Number(idStr);
-    // Keyset: rows where (relevance, id) < (cursor.relevance, cursor.id) under DESC ordering.
-    filters.push(sql`(${schema.scores.relevance}, ${schema.items.id}) < (${rel}, ${id})`);
+    const [relStr, pubStr, idStr] = cursor.split(":");
+    const rel = Number(relStr), pub = Number(pubStr), id = Number(idStr);
+    // Keyset under (effRel DESC, effPub DESC, id DESC).
+    filters.push(
+      sql`(${effRelevance} < ${rel})
+       OR (${effRelevance} = ${rel} AND ${effPublished} < ${pub})
+       OR (${effRelevance} = ${rel} AND ${effPublished} = ${pub} AND ${schema.items.id} < ${id})`
+    );
   }
 
-  const rows = await q
-    .where(and(...filters))
-    .orderBy(desc(schema.scores.relevance), desc(schema.items.id))
+  const rows = await (filters.length > 0 ? q.where(and(...filters)) : q)
+    .orderBy(desc(effRelevance), desc(effPublished), desc(schema.items.id))
     .limit(PAGE_SIZE * 2); // overfetch to absorb hidden filtering
 
   const visible = rows.filter((r) => !hiddenIds.has(r.id)).slice(0, PAGE_SIZE);
   const last = visible[visible.length - 1];
-  const nextCursor = last && last.relevance != null ? `${last.relevance}:${last.id}` : null;
+  // Strip helper fields from the response.
+  const items = visible.map(({ effRel, effPub, ...rest }) => rest);
+  const nextCursor = last
+    ? `${last.effRel}:${last.effPub ?? 0}:${last.id}`
+    : null;
 
-  return c.json({ items: visible, nextCursor });
+  return c.json({ items, nextCursor });
 });
 
 // Embedding-based recommendations: items similar to what the user has liked/lingered on.

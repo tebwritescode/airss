@@ -14,18 +14,24 @@ interface Bucket {
 // host → bucket
 const buckets = new Map<string, Bucket>();
 
-// Per-host policy. Hosts not listed get DEFAULT.
+// Per-host policy. Hosts not listed get DEFAULT. The map key is the
+// "canonical" host (see canonicalize) so reddit.com / www.reddit.com / etc.
+// share one bucket — Reddit rate-limits per IP, not per subdomain.
 const POLICY: Record<string, { capacity: number; perSec: number }> = {
-  "reddit.com":     { capacity: 1, perSec: 1 },        // ~60/min (Reddit unauth limit)
-  "www.reddit.com": { capacity: 1, perSec: 1 },
-  "old.reddit.com": { capacity: 1, perSec: 1 },
-  "youtube.com":    { capacity: 5, perSec: 5 },
-  "www.youtube.com":{ capacity: 5, perSec: 5 },
+  "reddit.com":  { capacity: 1, perSec: 0.5 },  // 1 req every 2 s — Reddit unauth IP limit is brutal
+  "youtube.com": { capacity: 5, perSec: 5 },
 };
 const DEFAULT = { capacity: 5, perSec: 5 };
 
+// Strip leading `www.` and any `old./new./np.` etc. so subdomains share
+// one rate-limit bucket with the apex.
+function canonicalize(host: string): string {
+  const h = host.toLowerCase().replace(/^(www|old|new|np|en|m)\./, "");
+  return h;
+}
+
 function bucketFor(host: string): Bucket {
-  const key = host.toLowerCase();
+  const key = canonicalize(host);
   let b = buckets.get(key);
   if (!b) {
     const policy = POLICY[key] ?? DEFAULT;
