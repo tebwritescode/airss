@@ -13,7 +13,7 @@ export function startScheduler(): void {
   cron.schedule("*/5 * * * *", async () => {
     try {
       const f = await fetchAllDue();
-      const e = await enrichBacklog(100);
+      const e = await enrichBacklog(500);
       if (f.inserted > 0 || e > 0) {
         console.log(`[cron] checked=${f.checked} inserted=${f.inserted} enrich_queued=${e}`);
       }
@@ -27,7 +27,7 @@ export function startScheduler(): void {
   setTimeout(async () => {
     try {
       await fetchAllDue();
-      await enrichBacklog(100);
+      await enrichBacklog(500);
       await maybeRegenerateProfile();
     } catch (err) {
       console.error("[cron] boot tick failed:", err);

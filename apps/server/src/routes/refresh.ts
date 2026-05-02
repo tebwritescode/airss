@@ -9,8 +9,15 @@ export const refreshRoutes = new Hono();
 
 refreshRoutes.post("/", async (c) => {
   const f = await fetchAllDue();
-  const e = await enrichBacklog(200);
+  const e = await enrichBacklog(500);
   return c.json({ checked: f.checked, inserted: f.inserted, enrichQueued: e });
+});
+
+// One-shot drain — queues *every* unenriched item. Use after an OPML import
+// or when the backlog is large.
+refreshRoutes.post("/enrich-all", async (c) => {
+  const e = await enrichBacklog(100_000);
+  return c.json({ enrichQueued: e });
 });
 
 // Rescore all items with the current interest centroid (embeddings must exist).

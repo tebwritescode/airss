@@ -1,13 +1,17 @@
 import type { Fetcher, FetchedItem } from "./types.ts";
 import { conditionalFetch } from "./http.ts";
 
-// Accept either a subreddit URL ("https://reddit.com/r/selfhosted") or a bare name ("r/selfhosted").
+// Accept any subreddit URL form: bare ("r/selfhosted"), full URL, or
+// the .rss suffix that some OPML exports include. Always normalize to the
+// canonical .json listing endpoint.
 export function normalizeRedditUrl(input: string): string {
-  const trimmed = input.trim().replace(/\/$/, "");
-  if (/^https?:\/\//.test(trimmed)) {
-    return trimmed.replace(/\/?$/, "") + "/.json?limit=50";
+  let s = input.trim().replace(/\/$/, "");
+  // Strip a trailing .rss / .json so we can re-append /.json?limit=50 cleanly.
+  s = s.replace(/\.(rss|json)$/i, "");
+  if (/^https?:\/\//i.test(s)) {
+    return s + "/.json?limit=50";
   }
-  const m = /^(?:r\/)?([A-Za-z0-9_]+)$/.exec(trimmed);
+  const m = /^(?:r\/)?([A-Za-z0-9_]+)$/.exec(s);
   if (m) return `https://www.reddit.com/r/${m[1]}/.json?limit=50`;
   throw new Error(`Unrecognized Reddit source: ${input}`);
 }

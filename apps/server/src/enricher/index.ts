@@ -5,7 +5,9 @@ import { extractFromUrl } from "./extract.ts";
 import { embedText, storeItemEmbedding } from "./embed.ts";
 import { scoreAndStore } from "./score.ts";
 
-const queue = new PQueue({ concurrency: 2 });
+// 8 parallel enrichments — Ollama on GPU handles this easily, and even
+// CPU embeds can keep up since extract+score is mostly I/O.
+const queue = new PQueue({ concurrency: 8 });
 
 export function enqueueEnrich(itemId: number): void {
   queue.add(() => enrichOne(itemId)).catch((err) => {
