@@ -38,7 +38,7 @@ providerRoutes.post("/keys", async (c) => {
   });
   const body = Body.parse(await c.req.json());
 
-  const enc = body.key ? encryptKey(body.key) : { ciphertext: "", nonce: "" };
+  const enc = body.key ? await encryptKey(body.key) : { ciphertext: "", nonce: "" };
   const baseUrl = body.baseUrl ? body.baseUrl : null;
 
   await db

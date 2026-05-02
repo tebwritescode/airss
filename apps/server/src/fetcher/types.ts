@@ -11,6 +11,7 @@ export interface FetchedItem {
 
 export interface FetchResult {
   items: FetchedItem[];
+  sourceTitle?: string;
   etag?: string;
   lastModified?: string;
   notModified?: boolean;

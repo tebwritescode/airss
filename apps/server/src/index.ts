@@ -35,9 +35,9 @@ app.route("/api/profile", profileRoutes);
 app.route("/api/providers", providerRoutes);
 app.route("/api/refresh", refreshRoutes);
 
-// Serve the built PWA at the root.
+// Serve the built PWA at the root; fall back to index.html for SPA routes.
 app.use("/*", serveStatic({ root: env.PWA_DIST }));
-app.get("/*", serveStatic({ path: `${env.PWA_DIST}/index.html` }));
+app.get("*", (c) => c.body(Bun.file(`${env.PWA_DIST}/index.html`)));
 
 startScheduler();
 

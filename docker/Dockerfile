@@ -29,7 +29,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # bun install (which pulls platform-appropriate prebuilt binaries) below.
 
 COPY --from=server-build /app/node_modules /app/node_modules
-COPY --from=server-build /app/apps/server/node_modules /app/apps/server/node_modules
 COPY --from=server-build /app/apps/server /app/apps/server
 COPY --from=pwa-build /app/apps/pwa/build /app/apps/pwa/build
 COPY package.json /app/package.json

@@ -21,7 +21,7 @@ export async function getProvider(name: ProviderName): Promise<Provider> {
   }
 
   if (!row || !row.ciphertext) throw new Error(`No API key configured for provider: ${name}`);
-  const key = decryptKey(row.ciphertext, row.nonce);
+  const key = await decryptKey(row.ciphertext, row.nonce);
   const baseUrl = row.baseUrl ?? null;
 
   const p =

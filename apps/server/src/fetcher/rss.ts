@@ -22,14 +22,14 @@ export const rssFetcher: Fetcher = async (ctx) => {
     externalId: it.guid ?? it.id ?? it.link ?? `${it.title}-${it.pubDate ?? ""}`,
     url: it.link ?? "",
     title: it.title ?? "(untitled)",
-    author: it.creator ?? it.author,
+    author: (it.creator ?? it.author)?.trim(),
     publishedAt: it.isoDate ? new Date(it.isoDate) : it.pubDate ? new Date(it.pubDate) : undefined,
     imageUrl: extractImage(it),
     contentHtml: it["content:encoded"] ?? it.content,
     contentText: it.contentSnippet,
   }));
 
-  return { items, etag: r.etag ?? undefined, lastModified: r.lastModified ?? undefined };
+  return { items, sourceTitle: feed.title, etag: r.etag ?? undefined, lastModified: r.lastModified ?? undefined };
 };
 
 function extractImage(it: Record<string, any>): string | undefined {

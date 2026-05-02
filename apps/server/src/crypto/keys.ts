@@ -1,30 +1,36 @@
-import sodium from "libsodium-wrappers";
 import { env } from "../env.ts";
 
-await sodium.ready;
+const AES_KEY_BYTES = 32;
 
-const masterKey = (() => {
+const masterKey: Promise<CryptoKey> = (async () => {
   const raw = Buffer.from(env.MASTER_KEY, "base64");
-  if (raw.length !== sodium.crypto_secretbox_KEYBYTES) {
+  if (raw.length < AES_KEY_BYTES) {
     throw new Error(
-      `MASTER_KEY must decode to ${sodium.crypto_secretbox_KEYBYTES} bytes; got ${raw.length}. Generate one with: openssl rand -base64 32`
+      `MASTER_KEY must decode to at least ${AES_KEY_BYTES} bytes; got ${raw.length}. Generate one with: openssl rand -base64 32`
     );
   }
-  return raw;
+  return crypto.subtle.importKey("raw", raw.slice(0, AES_KEY_BYTES), { name: "AES-GCM" }, false, [
+    "encrypt",
+    "decrypt",
+  ]);
 })();
 
-export function encryptKey(plaintext: string): { ciphertext: string; nonce: string } {
-  const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
-  const ct = sodium.crypto_secretbox_easy(sodium.from_string(plaintext), nonce, masterKey);
+export async function encryptKey(plaintext: string): Promise<{ ciphertext: string; nonce: string }> {
+  const key = await masterKey;
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(plaintext));
   return {
     ciphertext: Buffer.from(ct).toString("base64"),
-    nonce: Buffer.from(nonce).toString("base64"),
+    nonce: Buffer.from(iv).toString("base64"),
   };
 }
 
-export function decryptKey(ciphertext: string, nonce: string): string {
-  const ct = Buffer.from(ciphertext, "base64");
-  const n = Buffer.from(nonce, "base64");
-  const pt = sodium.crypto_secretbox_open_easy(ct, n, masterKey);
-  return sodium.to_string(pt);
+export async function decryptKey(ciphertext: string, nonce: string): Promise<string> {
+  const key = await masterKey;
+  const pt = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: Buffer.from(nonce, "base64") },
+    key,
+    Buffer.from(ciphertext, "base64")
+  );
+  return new TextDecoder().decode(pt);
 }

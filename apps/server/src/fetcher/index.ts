@@ -29,6 +29,7 @@ export async function fetchSource(sourceId: number): Promise<{ inserted: number;
       etag: result.etag ?? src.etag,
       lastModified: result.lastModified ?? src.lastModified,
       lastFetchedAt: new Date(),
+      ...(result.sourceTitle && !src.title ? { title: result.sourceTitle } : {}),
     })
     .where(eq(schema.sources.id, sourceId));
 

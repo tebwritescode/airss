@@ -1,29 +1,22 @@
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import sodium from "libsodium-wrappers";
 import type { Context, MiddlewareHandler } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { db, schema } from "./db/index.ts";
 import { env } from "./env.ts";
 
-await sodium.ready;
-
 const SESSION_COOKIE = "swn_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export async function hashPassword(password: string): Promise<string> {
-  return sodium.crypto_pwhash_str(
-    password,
-    sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE,
-    sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE
-  );
+  return Bun.password.hash(password, { algorithm: "argon2id" });
 }
 
 export async function verifyPassword(password: string): Promise<boolean> {
   const row = await db.query.authUser.findFirst({ where: eq(schema.authUser.id, 1) });
   if (!row) return false;
   try {
-    return sodium.crypto_pwhash_str_verify(row.passwordHash, password);
+    return Bun.password.verify(password, row.passwordHash);
   } catch {
     return false;
   }
