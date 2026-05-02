@@ -7,6 +7,9 @@ const Env = z.object({
   SESSION_SECRET: z.string().min(32),
   PUBLIC_ORIGIN: z.string().default("http://localhost:8787"),
   PWA_DIST: z.string().default("../pwa/build"),
+  // Set to "1" to skip all authentication (useful when behind a trusted
+  // reverse proxy that handles auth, or for single-user LAN deployments).
+  AUTH_DISABLED: z.string().optional(),
 });
 
 export const env = Env.parse(process.env);

@@ -7,6 +7,7 @@ import { env } from "./env.ts";
 
 const SESSION_COOKIE = "swn_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const AUTH_DISABLED = env.AUTH_DISABLED === "1" || env.AUTH_DISABLED === "true";
 
 export async function hashPassword(password: string): Promise<string> {
   return Bun.password.hash(password, { algorithm: "argon2id" });
@@ -31,6 +32,7 @@ export async function setPassword(password: string): Promise<void> {
 }
 
 export async function isFirstRun(): Promise<boolean> {
+  if (AUTH_DISABLED) return false; // skip the setup flow entirely
   const row = await db.query.authUser.findFirst({ where: eq(schema.authUser.id, 1) });
   return !row;
 }
@@ -53,6 +55,11 @@ export async function validSession(id: string | undefined): Promise<boolean> {
 }
 
 export const requireAuth: MiddlewareHandler = async (c, next) => {
+  // When AUTH_DISABLED is set (typically because a trusted reverse proxy is
+  // handling auth, or the deployment is a single-user LAN install), skip the
+  // session check entirely.
+  if (AUTH_DISABLED) return next();
+
   if (await isFirstRun()) {
     const path = new URL(c.req.url).pathname;
     if (!path.startsWith("/api/auth")) {

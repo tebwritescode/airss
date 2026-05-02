@@ -19,8 +19,11 @@ app.use("*", logger());
 app.use(
   "/api/*",
   cors({
-    origin: env.PUBLIC_ORIGIN,
-    credentials: true,
+    // When auth is disabled, accept requests from any origin (typical proxy
+    // setup). Otherwise lock to PUBLIC_ORIGIN so cookie credentials only
+    // flow through the configured origin.
+    origin: env.AUTH_DISABLED === "1" || env.AUTH_DISABLED === "true" ? "*" : env.PUBLIC_ORIGIN,
+    credentials: env.AUTH_DISABLED === "1" || env.AUTH_DISABLED === "true" ? false : true,
   })
 );
 
