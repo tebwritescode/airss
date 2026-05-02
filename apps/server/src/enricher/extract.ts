@@ -10,6 +10,16 @@ export interface Extracted {
 }
 
 export async function extractFromUrl(url: string): Promise<Extracted | null> {
+  // Block obvious SSRF: only http(s), reject private/loopback hosts.
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  if (isPrivateHost(parsed.hostname)) return null;
+
   try {
     const res = await fetch(url, {
       headers: {
@@ -17,13 +27,44 @@ export async function extractFromUrl(url: string): Promise<Extracted | null> {
         accept: "text/html,application/xhtml+xml",
       },
       redirect: "follow",
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return null;
-    const html = await res.text();
+    // Cap body size to defend against zip-bomb / huge-page memory blow-ups.
+    const reader = res.body?.getReader();
+    if (!reader) return null;
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    const MAX = 4 * 1024 * 1024;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.length;
+      if (total > MAX) { reader.cancel().catch(() => {}); return null; }
+      chunks.push(value);
+    }
+    const html = new TextDecoder().decode(Buffer.concat(chunks.map((c) => Buffer.from(c))));
     return extractFromHtml(html, url);
   } catch {
     return null;
   }
+}
+
+function isPrivateHost(host: string): boolean {
+  const h = host.toLowerCase();
+  if (h === "localhost" || h.endsWith(".localhost")) return true;
+  // IPv4 ranges: 10/8, 127/8, 169.254/16 (link-local), 172.16-31, 192.168/16
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+  }
+  // IPv6 loopback / unique local
+  if (h === "::1" || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80")) return true;
+  return false;
 }
 
 export function extractFromHtml(html: string, baseUrl: string): Extracted | null {

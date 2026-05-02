@@ -301,6 +301,32 @@ input:focus, textarea:focus { box-shadow: 0 0 0 2px var(--accent); }
   padding: 1.5rem 1rem 0.5rem; flex-wrap: wrap;
 }
 
+/* ── Must-read glow ────────────────────────────────── */
+.card.must-read {
+  box-shadow: 0 0 0 1.5px rgba(255,190,50,0.6),
+              0 0 24px 4px rgba(255,160,20,0.25),
+              0 0 60px 10px rgba(255,120,0,0.12);
+  border-radius: var(--radius);
+  position: relative;
+}
+.card.must-read::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: radial-gradient(ellipse at 50% 0%, rgba(255,180,40,0.08) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 1;
+}
+.must-read-badge {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: #FFB020;
+  background: rgba(255,176,32,0.12);
+  border: 1px solid rgba(255,176,32,0.35);
+  border-radius: 999px; padding: 0.12rem 0.55rem;
+}
+
 /* ── Recommendations ───────────────────────────────── */
 .related-section { padding: 0 0 0.5rem; }
 .related-section h3 {

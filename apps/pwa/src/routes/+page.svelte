@@ -174,6 +174,7 @@
   onDestroy(() => window.removeEventListener("keydown", onKeyDown));
 
   const HINT_T = 35;
+  const MUST_READ = 0.90; // items at or above this relevance get the sun-glow treatment
 
   function fmt(iso: number | null) {
     if (!iso) return "";
@@ -181,10 +182,19 @@
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
 
-  // Strip dangerous tags from article HTML before rendering.
+  // Sanitize article HTML — DOMPurify strips event handlers, javascript: URLs,
+  // <script>, <iframe>, etc. Loaded dynamically so SSR doesn't choke.
+  let DOMPurify: typeof import("dompurify").default | null = $state(null);
+  if (typeof window !== "undefined") {
+    import("dompurify").then((m) => { DOMPurify = m.default; });
+  }
   function sanitize(html: string): string {
-    return html.replace(/<(script|iframe|object|embed|form)[^>]*>[\s\S]*?<\/\1>/gi, "")
-               .replace(/<(script|iframe|object|embed|form)[^>]*\/?>[ \t]*/gi, "");
+    if (!DOMPurify) return ""; // safer to render nothing than raw HTML
+    return DOMPurify.sanitize(html, {
+      USE_PROFILES: { html: true },
+      FORBID_TAGS: ["style", "form", "input", "button", "textarea", "select", "link", "meta"],
+      FORBID_ATTR: ["style", "onerror", "onload", "onclick"],
+    });
   }
 </script>
 
@@ -268,6 +278,9 @@
     >
       {#if card}
         <div class="swipe-meta">
+          {#if card.relevance != null && card.relevance >= MUST_READ}
+            <span class="must-read-badge">★ Must read</span>
+          {/if}
           <span class="badge" style="background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.6);border-radius:6px;padding:0.05rem 0.45rem;font-size:0.68rem;text-transform:uppercase;">{card.sourceKind ?? "?"}</span>
           {#if card.sourceTitle}<span>{card.sourceTitle}</span>{/if}
           {#if card.relevance != null}<span class="score-pill" style="background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.5);">{Math.round(card.relevance * 100)}%</span>{/if}
@@ -324,7 +337,7 @@
 {/if}
 
 {#each items as item, i (item.id)}
-  <article class="card" use:attach data-item-id={item.id}>
+  <article class="card" class:must-read={item.relevance != null && item.relevance >= MUST_READ} use:attach data-item-id={item.id}>
     {#if item.imageUrl}
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <img
@@ -341,6 +354,9 @@
       style="cursor:pointer;"
     >
       <div class="meta">
+        {#if item.relevance != null && item.relevance >= MUST_READ}
+          <span class="must-read-badge">★ Must read</span>
+        {/if}
         <span class="badge">{item.sourceKind ?? "?"}</span>
         {#if item.sourceTitle}<span>{item.sourceTitle}</span>{/if}
         {#if item.author}<span>· {item.author}</span>{/if}

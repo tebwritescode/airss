@@ -3,19 +3,19 @@
   import { api } from "$lib/api";
 
   let promptText = $state("");
-  let savedAt = $state<number | null>(null);
+  let profileUpdatedAt = $state<string | null>(null);
   let savingProfile = $state(false);
+  let regenerating = $state(false);
+  let regenStatus = $state<"idle" | "ok" | "err">("idle");
 
   type ProviderName = "anthropic" | "openai" | "openrouter" | "ollama";
 
   let providers = $state<{ provider: string; baseUrl: string | null; hasKey: boolean; createdAt: number }[]>([]);
   let configs = $state<{ task: string; provider: string; model: string }[]>([]);
-
   let newProvider = $state<ProviderName>("openrouter");
   let newKey = $state("");
   let newBaseUrl = $state("");
 
-  // Default base URL hint per provider — shown as the input placeholder.
   const DEFAULT_BASE_URL: Record<ProviderName, string> = {
     anthropic: "https://api.anthropic.com",
     openai: "https://api.openai.com/v1",
@@ -24,36 +24,54 @@
   };
 
   let taskRows = $state<Record<string, { provider: string; model: string }>>({
-    embed: { provider: "openai", model: "text-embedding-3-small" },
-    score_judge: { provider: "anthropic", model: "claude-haiku-4-5-20251001" },
-    summarize: { provider: "anthropic", model: "claude-sonnet-4-6" },
-    digest: { provider: "anthropic", model: "claude-opus-4-7" },
+    embed:       { provider: "openai",     model: "text-embedding-3-small" },
+    score_judge: { provider: "anthropic",  model: "claude-haiku-4-5-20251001" },
+    summarize:   { provider: "anthropic",  model: "claude-sonnet-4-6" },
+    digest:      { provider: "anthropic",  model: "claude-opus-4-7" },
   });
 
   async function loadAll() {
     const p = await api.getProfile();
     promptText = p.profile.promptText ?? "";
+    profileUpdatedAt = p.profile.updatedAt
+      ? new Date(p.profile.updatedAt).toLocaleString()
+      : null;
     const all = await api.getProviders();
     providers = all.keys;
     configs = all.config;
-    for (const c of all.config) {
-      taskRows[c.task] = { provider: c.provider, model: c.model };
-    }
+    for (const c of all.config) taskRows[c.task] = { provider: c.provider, model: c.model };
   }
 
   async function saveProfile() {
     savingProfile = true;
     try {
       await api.saveProfile(promptText);
-      savedAt = Date.now();
     } finally {
       savingProfile = false;
     }
   }
 
+  async function regenerateProfile() {
+    regenerating = true;
+    regenStatus = "idle";
+    try {
+      const r = await fetch("/api/profile/regenerate", { method: "POST", credentials: "include" });
+      if (r.ok) {
+        const data = await r.json() as { profile: string };
+        promptText = data.profile;
+        profileUpdatedAt = new Date().toLocaleString();
+        regenStatus = "ok";
+      } else {
+        regenStatus = "err";
+      }
+    } catch {
+      regenStatus = "err";
+    } finally {
+      regenerating = false;
+    }
+  }
+
   async function addKey() {
-    // Allow saving baseUrl alone (e.g. updating just an existing entry's URL)
-    // — the server preserves the existing key when `key` is empty.
     if (!newKey.trim() && !newBaseUrl.trim()) return;
     await api.saveProviderKey(newProvider, newKey.trim(), newBaseUrl.trim() || null);
     newKey = "";
@@ -77,23 +95,58 @@
 
 <section class="section">
   <h2>Interest profile</h2>
-  <p class="muted" style="margin-top:0">
-    Plain-language description of what you care about. Used to score every new item.
+  <p class="muted" style="margin-top:0; font-size:0.85rem;">
+    AI builds this automatically from your feeds and reading behaviour.
+    You can edit it directly — your edits are preserved until the next auto-update.
   </p>
-  <textarea bind:value={promptText} placeholder="I'm interested in self-hosted infrastructure, Rust systems programming, and Wendell-from-L1Techs-style hardware deep dives. I don't care about crypto, celebrity news, or US political horse-race coverage." />
-  <div class="row" style="margin-top:0.5rem">
-    <span class="muted">{savedAt ? "Saved" : ""}</span>
-    <button class="btn" onclick={saveProfile} disabled={savingProfile}>{savingProfile ? "Saving…" : "Save"}</button>
+
+  <div style="position:relative;">
+    <textarea
+      bind:value={promptText}
+      placeholder="Add a source and read a few articles — AI will build your profile automatically."
+      style="padding-right: 2.5rem;"
+    />
+    {#if promptText}
+      <span
+        title="AI-generated"
+        style="position:absolute;top:0.6rem;right:0.65rem;font-size:1rem;opacity:0.5;pointer-events:none;"
+      >✦</span>
+    {/if}
+  </div>
+
+  {#if profileUpdatedAt}
+    <p class="muted" style="font-size:0.75rem; margin:0.25rem 0 0;">Last updated {profileUpdatedAt}</p>
+  {/if}
+
+  <div class="row" style="margin-top:0.6rem; gap:0.5rem;">
+    <button
+      class="btn-ghost"
+      onclick={regenerateProfile}
+      disabled={regenerating}
+      title="Ask AI to rebuild the profile from your current reading history"
+    >
+      {#if regenerating}
+        ✦ Building…
+      {:else if regenStatus === "ok"}
+        ✦ Updated
+      {:else if regenStatus === "err"}
+        ✦ Failed — is a provider configured?
+      {:else}
+        ✦ Rebuild with AI
+      {/if}
+    </button>
+    <div style="flex:1;"></div>
+    <button class="btn" onclick={saveProfile} disabled={savingProfile}>
+      {savingProfile ? "Saving…" : "Save"}
+    </button>
   </div>
 </section>
 
 <section class="section">
   <h2>Provider keys</h2>
   <p class="muted" style="font-size:0.85rem; margin-top:0">
-    Pick a provider, paste an API key, and optionally override the base URL
-    (useful for OpenRouter, self-hosted proxies, or pointing OpenAI-compatible
-    endpoints at any backend). Keys are encrypted server-side with libsodium and
-    never returned to the browser.
+    Pick a provider, paste an API key, and optionally override the base URL.
+    Keys are encrypted server-side and never returned to the browser.
   </p>
   <div class="row">
     <select bind:value={newProvider} style="flex:0 0 auto; max-width:9rem;">
@@ -108,13 +161,11 @@
     <input bind:value={newBaseUrl} placeholder={`Base URL (default: ${DEFAULT_BASE_URL[newProvider]})`} />
     <button class="btn" onclick={addKey} style="flex:0 0 auto;">Save</button>
   </div>
-
   {#each providers as k (k.provider)}
     <div class="source-row">
-      <span class="kind">{k.provider}</span>
+      <span class="kind">{k.provider.toUpperCase()}</span>
       <span class="url muted">
-        {k.hasKey ? "key set" : "no key"}{k.baseUrl ? ` · ${k.baseUrl}` : ` · ${DEFAULT_BASE_URL[k.provider as ProviderName] ?? "default"}`}
-        · {new Date(k.createdAt).toLocaleString()}
+        {k.hasKey ? "key set" : "no key"}{k.baseUrl ? ` · ${k.baseUrl}` : ""} · {new Date(k.createdAt).toLocaleString()}
       </span>
       <button onclick={() => removeKey(k.provider)}>Remove</button>
     </div>
@@ -124,15 +175,15 @@
 <section class="section">
   <h2>Per-task model</h2>
   <p class="muted" style="font-size:0.85rem; margin-top:0">
-    Route each AI task to whichever provider+model fits. With OpenRouter set as
-    a provider you can use any model in their catalog as the model id (e.g.
-    <code>anthropic/claude-3.5-sonnet</code>, <code>openai/gpt-4o-mini</code>,
-    or <code>meta-llama/llama-3.1-8b-instruct</code>).
+    Route each AI task to whichever provider+model fits. With OpenRouter you can use
+    any model in their catalog (e.g. <code>anthropic/claude-3.5-sonnet</code>,
+    <code>openai/gpt-4o-mini</code>).
+    The <strong>summarize</strong> task is used for AI profile generation.
   </p>
   {#each Object.keys(taskRows) as task}
     <div class="row">
-      <span class="muted" style="flex:0 0 7rem;">{task}</span>
-      <select bind:value={taskRows[task].provider} style="flex:0 0 auto; max-width:9rem;">
+      <span class="muted" style="flex:0 0 7rem; font-size:0.85rem;">{task}</span>
+      <select bind:value={taskRows[task].provider} style="flex:0 0 auto; max-width:8.5rem;">
         <option value="anthropic">Anthropic</option>
         <option value="openai">OpenAI</option>
         <option value="openrouter">OpenRouter</option>

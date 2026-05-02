@@ -52,6 +52,37 @@ export async function scoreItem(input: ScoreInput): Promise<ScoreResult> {
 
 export async function scoreAndStore(itemId: number, itemEmbedding: number[]): Promise<ScoreResult> {
   const r = await scoreItem({ itemId, itemEmbedding });
+  await persistScore(itemId, r);
+  return r;
+}
+
+// Like scoreAndStore but accepts a precomputed centroid + profile so a batch
+// of items can be scored without recomputing the centroid for each one.
+export async function scoreAndStoreBatch(
+  itemId: number,
+  itemEmbedding: number[],
+  ctx: { profile: number[] | null; interest: number[] | null }
+): Promise<ScoreResult> {
+  const profileSim  = ctx.profile  ? cosine(itemEmbedding, ctx.profile)  : 0;
+  const interestSim = ctx.interest ? cosine(itemEmbedding, ctx.interest) : 0;
+
+  let relevance: number;
+  let rationale: string;
+  if (ctx.profile && ctx.interest) {
+    relevance = 0.6 * profileSim + 0.4 * interestSim;
+    rationale = `profile_sim=${profileSim.toFixed(3)} interest_sim=${interestSim.toFixed(3)}`;
+  } else if (ctx.profile)  { relevance = profileSim;  rationale = `profile_sim=${profileSim.toFixed(3)} (no feed signals yet)`; }
+    else if (ctx.interest) { relevance = interestSim; rationale = `interest_sim=${interestSim.toFixed(3)} (no profile prompt)`; }
+    else                   { relevance = 0.5;         rationale = "no signals yet — neutral"; }
+
+  relevance = clamp01(0.5 + relevance / 2);
+  if (!Number.isFinite(relevance)) relevance = 0.5;
+  const r = { relevance, rationale };
+  await persistScore(itemId, r);
+  return r;
+}
+
+async function persistScore(itemId: number, r: ScoreResult): Promise<void> {
   await db
     .insert(schema.scores)
     .values({ itemId, relevance: r.relevance, rationale: r.rationale, model: "embedding-blend-v1" })
@@ -59,7 +90,6 @@ export async function scoreAndStore(itemId: number, itemEmbedding: number[]): Pr
       target: schema.scores.itemId,
       set: { relevance: r.relevance, rationale: r.rationale, model: "embedding-blend-v1", scoredAt: new Date() },
     });
-  return r;
 }
 
 /**
@@ -111,7 +141,8 @@ export async function computeInterestCentroid(): Promise<number[] | null> {
     weightSum += w;
   }
 
-  if (!acc || weightSum === 0) return null;
+  // Guard against ages so old that all weights collapse to ~0; would make centroid NaN.
+  if (!acc || weightSum < 1e-6) return null;
   for (let i = 0; i < acc.length; i++) acc[i] = acc[i]! / weightSum;
   return acc;
 }

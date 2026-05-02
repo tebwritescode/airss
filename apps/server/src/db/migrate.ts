@@ -115,9 +115,24 @@ const ALTERS: { sql: string; description: string }[] = [
 for (const stmt of STATEMENTS) raw.exec(stmt);
 
 // Upgrade signals table if 'share' kind is not in its CHECK constraint.
+// Recovery-safe: if a previous run crashed mid-rebuild, signals_new may exist
+// without a real signals table (or as a leftover). Handle both shapes.
+const signalsExists = !!raw.query(`SELECT name FROM sqlite_master WHERE type='table' AND name='signals'`).get();
+const signalsNewExists = !!raw.query(`SELECT name FROM sqlite_master WHERE type='table' AND name='signals_new'`).get();
+
+// Recovery: signals dropped but rename never happened — promote signals_new.
+if (!signalsExists && signalsNewExists) {
+  raw.exec(`ALTER TABLE signals_new RENAME TO signals`);
+  raw.exec(`CREATE INDEX IF NOT EXISTS signals_item_kind_idx ON signals(item_id, kind)`);
+  raw.exec(`CREATE INDEX IF NOT EXISTS signals_ts_idx ON signals(ts)`);
+  console.log("[migrate] signals: recovered from interrupted rebuild");
+}
+
 const signalsDef = (raw.query(`SELECT sql FROM sqlite_master WHERE type='table' AND name='signals'`).get() as { sql: string } | undefined)?.sql ?? "";
-if (!signalsDef.includes("'share'")) {
+if (signalsDef && !signalsDef.includes("'share'")) {
   try {
+    // Clear stale signals_new from any previous failed attempt before starting.
+    raw.exec(`DROP TABLE IF EXISTS signals_new`);
     raw.exec(`BEGIN`);
     raw.exec(`CREATE TABLE signals_new (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,7 +149,7 @@ if (!signalsDef.includes("'share'")) {
     raw.exec(`COMMIT`);
     console.log("[migrate] signals: added 'share' kind");
   } catch (err) {
-    raw.exec(`ROLLBACK`);
+    try { raw.exec(`ROLLBACK`); } catch { /* not in tx */ }
     console.error("[migrate] signals upgrade failed:", err);
   }
 }
