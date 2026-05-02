@@ -98,6 +98,12 @@ const STATEMENTS: string[] = [
     id TEXT PRIMARY KEY,
     expires_at INTEGER NOT NULL
   )`,
+
+  `CREATE TABLE IF NOT EXISTS auth_user (
+    id INTEGER PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+  )`,
 ];
 
 // In-place ALTERs for forward migrations. SQLite ignores duplicate column

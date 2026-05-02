@@ -5,7 +5,6 @@ const Env = z.object({
   DB_PATH: z.string().default("./data/swift-newt.sqlite"),
   MASTER_KEY: z.string().min(32, "MASTER_KEY must be >=32 bytes (base64 of 32 random bytes)"),
   SESSION_SECRET: z.string().min(32),
-  USER_PASSWORD_HASH: z.string().optional(),
   PUBLIC_ORIGIN: z.string().default("http://localhost:8787"),
   PWA_DIST: z.string().default("../pwa/build"),
 });

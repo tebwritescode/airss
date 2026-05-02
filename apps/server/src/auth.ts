@@ -1,5 +1,5 @@
-import { eq, gt } from "drizzle-orm";
-import { createHash, randomBytes } from "node:crypto";
+import { eq } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
 import sodium from "libsodium-wrappers";
 import type { Context, MiddlewareHandler } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
@@ -19,16 +19,27 @@ export async function hashPassword(password: string): Promise<string> {
   );
 }
 
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
+export async function verifyPassword(password: string): Promise<boolean> {
+  const row = await db.query.authUser.findFirst({ where: eq(schema.authUser.id, 1) });
+  if (!row) return false;
   try {
-    return sodium.crypto_pwhash_str_verify(hash, password);
+    return sodium.crypto_pwhash_str_verify(row.passwordHash, password);
   } catch {
     return false;
   }
 }
 
-export function isFirstRun(): boolean {
-  return !env.USER_PASSWORD_HASH;
+export async function setPassword(password: string): Promise<void> {
+  const hash = await hashPassword(password);
+  await db
+    .insert(schema.authUser)
+    .values({ id: 1, passwordHash: hash })
+    .onConflictDoUpdate({ target: schema.authUser.id, set: { passwordHash: hash, createdAt: new Date() } });
+}
+
+export async function isFirstRun(): Promise<boolean> {
+  const row = await db.query.authUser.findFirst({ where: eq(schema.authUser.id, 1) });
+  return !row;
 }
 
 export async function createSession(): Promise<string> {
@@ -49,8 +60,7 @@ export async function validSession(id: string | undefined): Promise<boolean> {
 }
 
 export const requireAuth: MiddlewareHandler = async (c, next) => {
-  if (isFirstRun()) {
-    // Allow access to /api/auth/setup; everything else gets 401 to force setup.
+  if (await isFirstRun()) {
     const path = new URL(c.req.url).pathname;
     if (!path.startsWith("/api/auth")) {
       return c.json({ error: "first_run", message: "Initial setup required" }, 401);
@@ -78,13 +88,4 @@ export function clearSessionCookie(c: Context): void {
 
 export function getSessionId(c: Context): string | undefined {
   return getCookie(c, SESSION_COOKIE);
-}
-
-export function constantTimeEq(a: string, b: string): boolean {
-  const ah = createHash("sha256").update(a).digest();
-  const bh = createHash("sha256").update(b).digest();
-  if (ah.length !== bh.length) return false;
-  let r = 0;
-  for (let i = 0; i < ah.length; i++) r |= ah[i]! ^ bh[i]!;
-  return r === 0;
 }

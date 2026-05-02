@@ -1,6 +1,8 @@
 <script lang="ts">
   import { api } from "$lib/api";
 
+  import { goto } from "$app/navigation";
+
   let password = $state("");
   let confirm = $state("");
   let busy = $state(false);
@@ -15,6 +17,7 @@
     try {
       await api.setup(password);
       done = true;
+      goto("/");
     } catch (e) {
       err = (e as Error).message;
     } finally {
@@ -26,8 +29,7 @@
 <section class="section">
   <h2>Initial setup</h2>
   {#if done}
-    <p>Password hash printed to the server log.</p>
-    <p class="muted">Copy the <code>USER_PASSWORD_HASH=…</code> line into your <code>.env</code> (or docker-compose env_file), restart the container, then log in.</p>
+    <p>Logged in. Redirecting…</p>
   {:else}
     <p class="muted" style="margin-top:0">Pick a password for this single-user instance.</p>
     <div class="row"><input bind:value={password} type="password" placeholder="Password (min 8)" /></div>
