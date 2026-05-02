@@ -21,12 +21,13 @@ export async function enrichOne(itemId: number): Promise<void> {
   let contentText = item.contentText;
   let contentHtml = item.contentHtml;
 
-  // If we don't already have body text or an image, try readability extraction.
-  if (!contentText || !imageUrl) {
+  // Always run Readability if we haven't extracted the full article yet.
+  // A short RSS contentSnippet in contentText does NOT count — we need the full article.
+  if (!contentHtml) {
     const ext = await extractFromUrl(item.url);
     if (ext) {
-      contentText ??= ext.text;
-      contentHtml ??= ext.html;
+      contentText = ext.text ?? contentText; // prefer full Readability text over RSS snippet
+      contentHtml = ext.html ?? contentHtml;
       imageUrl ??= ext.imageUrl;
     }
   }

@@ -180,6 +180,12 @@
     const d = new Date(iso);
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
+
+  // Strip dangerous tags from article HTML before rendering.
+  function sanitize(html: string): string {
+    return html.replace(/<(script|iframe|object|embed|form)[^>]*>[\s\S]*?<\/\1>/gi, "")
+               .replace(/<(script|iframe|object|embed|form)[^>]*\/?>[ \t]*/gi, "");
+  }
 </script>
 
 <!-- ── Reader overlay ─────────────────────────────── -->
@@ -212,11 +218,13 @@
           {/if}
         </div>
 
-        {#if item.contentText}
+        {#if item.contentHtml}
+          <div class="reader-text" role="article">{@html sanitize(item.contentHtml)}</div>
+        {:else if item.contentText}
           <p class="reader-text">{item.contentText}</p>
         {:else}
           <p class="muted" style="text-align:center; padding:2rem 0;">
-            No extracted text — read it at the source.
+            Could not extract article — try reading at the source.
           </p>
         {/if}
 
