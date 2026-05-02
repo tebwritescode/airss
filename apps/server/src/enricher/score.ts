@@ -147,9 +147,6 @@ export async function computeInterestCentroid(): Promise<number[] | null> {
   return acc;
 }
 
-// Keep old name as alias so the feed/related route still compiles.
-export const computeLikedCentroid = computeInterestCentroid;
-
 function clamp01(x: number): number {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }

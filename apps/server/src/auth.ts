@@ -27,7 +27,7 @@ export async function setPassword(password: string): Promise<void> {
   await db
     .insert(schema.authUser)
     .values({ id: 1, passwordHash: hash })
-    .onConflictDoUpdate({ target: schema.authUser.id, set: { passwordHash: hash, createdAt: new Date() } });
+    .onConflictDoUpdate({ target: schema.authUser.id, set: { passwordHash: hash } });
 }
 
 export async function isFirstRun(): Promise<boolean> {

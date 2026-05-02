@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { desc, eq, sql, and, lt, gte, inArray, notInArray } from "drizzle-orm";
 import { db, schema } from "../db/index.ts";
 import { getItemEmbedding, cosine } from "../enricher/embed.ts";
-import { computeLikedCentroid } from "../enricher/score.ts";
+import { computeInterestCentroid } from "../enricher/score.ts";
 
 export const feedRoutes = new Hono();
 
@@ -69,7 +69,7 @@ feedRoutes.get("/related", async (c) => {
     .filter(Boolean);
   const limit = Math.min(Number(c.req.query("limit") ?? "6"), 20);
 
-  const centroid = await computeLikedCentroid();
+  const centroid = await computeInterestCentroid();
   if (!centroid) return c.json({ items: [] });
 
   // Hidden items should not appear in recommendations.

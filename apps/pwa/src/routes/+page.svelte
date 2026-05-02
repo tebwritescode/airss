@@ -93,9 +93,14 @@
   }
 
   // ── Card signals ─────────────────────────────────────
-  function like(item: FeedItem) {
+  // Using a SvelteSet so the {#each} block re-evaluates when items are liked.
+  // Mutating a property on a destructured loop element doesn't reliably trigger
+  // Svelte 5 reactivity, especially for objects originally fetched from the API.
+  let likedIds = $state(new Set<number>());
+
+  function like(item: FeedItem | FullItem) {
     recordSignal(item.id, "like");
-    item._liked = true;
+    likedIds = new Set([...likedIds, item.id]);
   }
 
   function hide(item: FeedItem) {
@@ -242,7 +247,7 @@
           <a class="btn" href={item.url} target="_blank" rel="noopener" onclick={() => recordSignal(item.id, "open")}>
             Read original ↗
           </a>
-          <button class="btn-ghost" onclick={() => { like(item); }}>{item._liked ? "Liked ✓" : "❤ Like"}</button>
+          <button class="btn-ghost" onclick={() => { like(item); }}>{likedIds.has(item.id) ? "Liked ✓" : "❤ Like"}</button>
           <button class="btn-ghost" onclick={() => share(item)}>⬆ Share</button>
         </div>
       </div>
@@ -308,7 +313,7 @@
         <button class="swipe-btn skip" onclick={swipeHide} title="Hide (←)">✕</button>
         <button class="swipe-btn open" onclick={() => openReader(card)} title="Read">✦</button>
         <button class="swipe-btn share" onclick={() => share(card)} title="Share">⬆</button>
-        <button class="swipe-btn like" onclick={swipeLike} title="Like (→)">{card._liked ? "❤" : "♡"}</button>
+        <button class="swipe-btn like" onclick={swipeLike} title="Like (→)">{likedIds.has(card.id) ? "❤" : "♡"}</button>
       </div>
     {/if}
   </div>
@@ -370,7 +375,7 @@
       {/if}
     </div>
     <div class="actions">
-      <button onclick={() => like(item)} class:active={item._liked}>{item._liked ? "Liked ✓" : "❤ Like"}</button>
+      <button onclick={() => like(item)} class:active={likedIds.has(item.id)}>{likedIds.has(item.id) ? "Liked ✓" : "❤ Like"}</button>
       <button onclick={() => share(item)}>⬆ Share</button>
       <button onclick={() => hide(item)}>Hide</button>
       <button onclick={() => openReader(item)} style="color:var(--blue);">Read</button>

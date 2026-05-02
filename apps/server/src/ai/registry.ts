@@ -53,3 +53,37 @@ const DEFAULTS: Record<Task, { provider: ProviderName; model: string }> = {
   summarize: { provider: "anthropic", model: "claude-sonnet-4-6" },
   digest: { provider: "anthropic", model: "claude-opus-4-7" },
 };
+
+const DEFAULT_CHAT_MODEL: Record<ProviderName, string> = {
+  anthropic:  "claude-haiku-4-5-20251001",
+  openrouter: "anthropic/claude-3.5-haiku",
+  openai:     "gpt-4o-mini",
+  ollama:     "llama3",
+};
+
+export function getDefaultChatModel(name: ProviderName): string {
+  return DEFAULT_CHAT_MODEL[name];
+}
+
+/**
+ * Returns a chat-capable provider, preferring the one configured for `task`,
+ * but falling back to any other provider that has a key. Throws only if no
+ * provider has a key.
+ */
+export async function getChatProviderWithFallback(
+  task: Task
+): Promise<{ provider: Provider; model: string; usedFallback: boolean }> {
+  const cfg = await getTaskConfig(task);
+  try {
+    const p = await getProvider(cfg.provider);
+    return { provider: p, model: cfg.model, usedFallback: false };
+  } catch {
+    const keys = await db
+      .select({ provider: schema.providerKeys.provider, ciphertext: schema.providerKeys.ciphertext })
+      .from(schema.providerKeys);
+    const candidate = keys.find((k) => k.ciphertext !== "" || k.provider === "ollama");
+    if (!candidate) throw new Error("No chat provider configured");
+    const p = await getProvider(candidate.provider as ProviderName);
+    return { provider: p, model: getDefaultChatModel(candidate.provider as ProviderName), usedFallback: true };
+  }
+}

@@ -55,6 +55,7 @@ const STATEMENTS: string[] = [
   )`,
   `CREATE INDEX IF NOT EXISTS signals_item_kind_idx ON signals(item_id, kind)`,
   `CREATE INDEX IF NOT EXISTS signals_ts_idx ON signals(ts)`,
+  `CREATE INDEX IF NOT EXISTS signals_kind_ts_idx ON signals(kind, ts)`,
 
   `CREATE TABLE IF NOT EXISTS clusters (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,6 +147,7 @@ if (signalsDef && !signalsDef.includes("'share'")) {
     raw.exec(`ALTER TABLE signals_new RENAME TO signals`);
     raw.exec(`CREATE INDEX IF NOT EXISTS signals_item_kind_idx ON signals(item_id, kind)`);
     raw.exec(`CREATE INDEX IF NOT EXISTS signals_ts_idx ON signals(ts)`);
+    raw.exec(`CREATE INDEX IF NOT EXISTS signals_kind_ts_idx ON signals(kind, ts)`);
     raw.exec(`COMMIT`);
     console.log("[migrate] signals: added 'share' kind");
   } catch (err) {

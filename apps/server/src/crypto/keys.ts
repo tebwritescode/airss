@@ -9,6 +9,11 @@ const masterKey: Promise<CryptoKey> = (async () => {
       `MASTER_KEY must decode to at least ${AES_KEY_BYTES} bytes; got ${raw.length}. Generate one with: openssl rand -base64 32`
     );
   }
+  if (raw.length > AES_KEY_BYTES) {
+    console.warn(
+      `[crypto] MASTER_KEY decoded to ${raw.length} bytes; only the first ${AES_KEY_BYTES} are used.`
+    );
+  }
   return crypto.subtle.importKey("raw", raw.slice(0, AES_KEY_BYTES), { name: "AES-GCM" }, false, [
     "encrypt",
     "decrypt",
