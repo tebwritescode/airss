@@ -1,0 +1,13 @@
+services:
+  swift-newt:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: swift-newt
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data
