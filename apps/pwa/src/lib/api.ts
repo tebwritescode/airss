@@ -13,6 +13,7 @@ export type FeedItem = {
   sourceKind: string | null;
   relevance: number | null;
   rationale: string | null;
+  viewed?: boolean;
 };
 
 export type Source = {

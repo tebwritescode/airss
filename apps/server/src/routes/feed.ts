@@ -23,6 +23,27 @@ feedRoutes.get("/", async (c) => {
     .where(inArray(schema.signals.kind, ["hide", "dislike"]));
   const hiddenIds = new Set(hidden.map((h) => h.itemId));
 
+  // De-dupe by URL: when the same article appears in multiple sources
+  // (Reddit cross-posts, dual feeds, etc.), keep only the highest-scoring
+  // copy (and as a tiebreaker, the one with the lowest id).
+  const dedupFilter = sql`${schema.items.id} IN (
+    SELECT id FROM (
+      SELECT items.id AS id, ROW_NUMBER() OVER (
+        PARTITION BY items.url
+        ORDER BY COALESCE(scores.relevance, 0.5) DESC, items.id ASC
+      ) AS rn
+      FROM items LEFT JOIN scores ON scores.item_id = items.id
+    ) WHERE rn = 1
+  )`;
+
+  // Items the user has read: any 'open' signal OR a dwell ≥ 3 s.
+  const viewedExpr = sql<number>`(
+    SELECT 1 FROM signals
+    WHERE signals.item_id = ${schema.items.id}
+      AND (signals.kind = 'open' OR (signals.kind = 'dwell_ms' AND signals.value >= 3000))
+    LIMIT 1
+  )`;
+
   // SQL expressions used in both ORDER BY and the keyset cursor predicate.
   const effRelevance = sql<number>`COALESCE(${schema.scores.relevance}, 0.5)`;
   const effPublished = sql<number>`COALESCE(${schema.items.publishedAt}, ${schema.items.createdAt})`;
@@ -43,13 +64,14 @@ feedRoutes.get("/", async (c) => {
       rationale: schema.scores.rationale,
       effRel: effRelevance,
       effPub: effPublished,
+      viewed: viewedExpr,
     })
     .from(schema.items)
     .leftJoin(schema.scores, eq(schema.scores.itemId, schema.items.id))
     .leftJoin(schema.sources, eq(schema.sources.id, schema.items.sourceId))
     .$dynamic();
 
-  const filters: any[] = [];
+  const filters: any[] = [dedupFilter];
   // minScore filter only triggers if the caller explicitly asks for one > 0.
   if (minScore > 0) filters.push(gte(effRelevance, minScore));
   if (sourceId) filters.push(eq(schema.items.sourceId, sourceId));
@@ -70,8 +92,11 @@ feedRoutes.get("/", async (c) => {
 
   const visible = rows.filter((r) => !hiddenIds.has(r.id)).slice(0, PAGE_SIZE);
   const last = visible[visible.length - 1];
-  // Strip helper fields from the response.
-  const items = visible.map(({ effRel, effPub, ...rest }) => rest);
+  // Strip helper fields from the response; coerce viewed to a real boolean.
+  const items = visible.map(({ effRel, effPub, viewed, ...rest }) => ({
+    ...rest,
+    viewed: viewed === 1 || viewed === true,
+  }));
   const nextCursor = last
     ? `${last.effRel}:${last.effPub ?? 0}:${last.id}`
     : null;

@@ -342,7 +342,13 @@
 {/if}
 
 {#each items as item, i (item.id)}
-  <article class="card" class:must-read={item.relevance != null && item.relevance >= MUST_READ} use:attach data-item-id={item.id}>
+  <article
+    class="card"
+    class:must-read={item.relevance != null && item.relevance >= MUST_READ && !item.viewed}
+    class:viewed={item.viewed}
+    use:attach
+    data-item-id={item.id}
+  >
     {#if item.imageUrl}
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <img
@@ -359,7 +365,9 @@
       style="cursor:pointer;"
     >
       <div class="meta">
-        {#if item.relevance != null && item.relevance >= MUST_READ}
+        {#if item.viewed}
+          <span class="viewed-badge">✓ Read</span>
+        {:else if item.relevance != null && item.relevance >= MUST_READ}
           <span class="must-read-badge">★ Must read</span>
         {/if}
         <span class="badge">{item.sourceKind ?? "?"}</span>

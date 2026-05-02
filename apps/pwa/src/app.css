@@ -301,6 +301,20 @@ input:focus, textarea:focus { box-shadow: 0 0 0 2px var(--accent); }
   padding: 1.5rem 1rem 0.5rem; flex-wrap: wrap;
 }
 
+/* ── Viewed (already read) state ───────────────────── */
+.card.viewed {
+  opacity: 0.55;
+}
+.card.viewed .thumb { filter: grayscale(0.4) brightness(0.85); }
+.card.viewed .title { font-weight: 500; }
+.viewed-badge {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  font-size: 0.65rem; font-weight: 600; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--text-sub);
+  background: rgba(255,255,255,0.06);
+  border-radius: 4px; padding: 0.05rem 0.4rem;
+}
+
 /* ── Must-read glow ────────────────────────────────── */
 .card.must-read {
   box-shadow: 0 0 0 1.5px rgba(255,190,50,0.6),
