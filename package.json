@@ -1,0 +1,19 @@
+{
+  "name": "swift-newt",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI-curated personal feed aggregator: RSS, Reddit, YouTube, websites — ranked, summarized, clustered. Self-hosted, BYO model.",
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev:server": "bun --cwd apps/server run dev",
+    "dev:pwa": "bun --cwd apps/pwa run dev",
+    "build": "bun run build:pwa && bun run build:server",
+    "build:pwa": "bun --cwd apps/pwa run build",
+    "build:server": "bun --cwd apps/server run build",
+    "migrate": "bun --cwd apps/server run migrate",
+    "start": "bun --cwd apps/server run start"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}
